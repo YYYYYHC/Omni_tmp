@@ -14,9 +14,6 @@ from data_loaders.humanml.utils.get_opt import get_opt
 from ..scripts.motion_process import recover_root_rot_pos, recover_from_ric
 from data_loaders.humanml.utils.metrics import cross_combination_joints
 from utils_abs.sample import sample_abstraction_all, apply_random_transformation_full, apply_random_drop_full, apply_random_global_scaling_translation
-from concurrent.futures import ProcessPoolExecutor, as_completed
-from functools import partial
-import multiprocessing as mp
 # import spacy
 config = {
     'PERTURB_ROTATION_STRENGTH': 0.1,
@@ -32,92 +29,18 @@ PERTURB_TRANSLATION_STRENGTH_GLOBAL = config['PERTURB_TRANSLATION_STRENGTH_GLOBA
 PERTURB_SCALING_STRENGTH = config['PERTURB_SCALING_STRENGTH']
 PROB_PERTURB_ABSTRACTION = config['PROB_PERTURB_ABSTRACTION']
 PROB_DROP_ABSTRACTION = config['PROB_DROP_ABSTRACTION']
-
-def process_single_file(name, opt, min_motion_len):
-    """处理单个文件的函数，用于多进程"""
-    try:
-        abspath = pjoin(opt.abstraction_dir, name + '.npy')
-        if not os.path.exists(abspath):
-            return None
-            
-        position = np.load(pjoin(opt.position_dir, name + '.npy'), mmap_mode='r')
-        motion = np.load(pjoin(opt.motion_dir, name + '.npy'), mmap_mode='r')
-        
-        if 'skeleton' in opt.abstraction_dir:
-            raise NotImplementedError('skeleton abstraction is not supported yet')
-            abstraction = np.load(pjoin(opt.abstraction_dir, name + '.npy')) #(number_sample, time, number_skeleton, 2, 3)
-        elif 'cube' in opt.abstraction_dir:
-            abstraction_dict_path = pjoin(opt.abstraction_dir, name + '.npy')
-            max_abs_num = 23
-            
-        if (len(motion)) < min_motion_len or (len(motion) >= 200):
-            return None
-            
-        text_data = []
-        flag = False
-        data_items = []
-        
-        with cs.open(pjoin(opt.text_dir, name + '.txt')) as f:
-            for line in f.readlines():
-                text_dict = {}
-                line_split = line.strip().split('#')
-                caption = line_split[0]
-                tokens = line_split[1].split(' ')
-                f_tag = float(line_split[2])
-                to_tag = float(line_split[3])
-                f_tag = 0.0 if np.isnan(f_tag) else f_tag
-                to_tag = 0.0 if np.isnan(to_tag) else to_tag
-
-                text_dict['caption'] = caption
-                text_dict['tokens'] = tokens
-                if f_tag == 0.0 and to_tag == 0.0:
-                    flag = True
-                    text_data.append(text_dict)
-                else:
-                    try:
-                        n_motion = motion[int(f_tag*20) : int(to_tag*20)]
-                        if (len(n_motion)) < min_motion_len or (len(n_motion) >= 200):
-                            continue
-                        new_name = random.choice('ABCDEFGHIJKLMNOPQRSTUVW') + '_' + name
-                        
-                        data_items.append({
-                            'name': new_name,
-                            'motion': n_motion,
-                            'position': position,
-                            'abstraction_all_path': abstraction_dict_path,
-                            'f_t_mul20': {"f_tag20": f_tag*20, "to_tag20": to_tag*20},
-                            'length': len(n_motion),
-                            'text': [text_dict]
-                        })
-                    except:
-                        print(line_split)
-                        print(line_split[2], line_split[3], f_tag, to_tag, name)
-
-        if flag:
-            data_items.append({
-                'name': name,
-                'motion': motion,
-                'position': position,
-                'abstraction_all_path': abstraction_dict_path,
-                'length': len(motion),
-                'text': text_data
-            })
-            
-        return data_items
-        
-    except Exception as e:
-        print(f'data issue at: {pjoin(opt.motion_dir, name + ".npy")}, error: {str(e)}')
-        return None
-
 def collate_fn(batch):
     if batch[0][-1] is None:
         batch = [b[:-1] for b in batch]
     batch.sort(key=lambda x: x[3], reverse=True)
     return default_collate(batch)
 
+
+
+
 '''For use of training text motion matching model, and evaluations'''
 class Text2MotionDatasetV2(data.Dataset):
-    def __init__(self, opt, mean, std, split_file, w_vectorizer, mode, control_joint=0, density=100, use_multiprocessing=True, num_workers=64):
+    def __init__(self, opt, mean, std, split_file, w_vectorizer, mode, control_joint=0, density=100):
         self.valtest = ('val' in split_file or 'test' in split_file)
         self.opt = opt
         self.w_vectorizer = w_vectorizer
@@ -138,101 +61,74 @@ class Text2MotionDatasetV2(data.Dataset):
         new_name_list = []
         length_list = []
         max_abs_num = 0
-        
-        if use_multiprocessing and len(id_list) > 0:
-            print(f"使用多进程加载数据，进程数: {num_workers}")
-            print(f"文件总数: {len(id_list)}")
-            
-            # 创建偏函数，固定参数
-            process_func = partial(process_single_file, opt=opt, min_motion_len=min_motion_len)
-            
-            # 使用ProcessPoolExecutor进行多进程处理
-            with ProcessPoolExecutor(max_workers=num_workers) as executor:
-                # 提交所有文件处理任务
-                futures = [executor.submit(process_func, name) for name in id_list]
-                
-                # 使用tqdm显示进度
-                for future in tqdm(as_completed(futures), desc="加载数据文件", total=len(futures)):
-                    try:
-                        result = future.result()
-                        if result is not None:
-                            for item in result:
-                                name = item['name']
-                                data_dict[name] = item
-                                new_name_list.append(name)
-                                length_list.append(item['length'])
-                    except Exception as e:
-                        print(f"处理文件时出错: {e}")
-        else:
-            print("使用单进程加载数据")
-            for name in tqdm(id_list):
-                abspath = pjoin(opt.abstraction_dir, name + '.npy')
-                if not os.path.exists(abspath):
+        for name in tqdm(id_list):
+            abspath = pjoin(opt.abstraction_dir, name + '.npy')
+            if not os.path.exists(abspath):
+                continue
+            try:
+                position = np.load(pjoin(opt.position_dir, name + '.npy'), mmap_mode='r')
+                motion = np.load(pjoin(opt.motion_dir, name + '.npy'), mmap_mode='r')
+                if 'skeleton' in opt.abstraction_dir:
+                    raise NotImplementedError('skeleton abstraction is not supported yet')
+                    abstraction = np.load(pjoin(opt.abstraction_dir, name + '.npy')) #(number_sample, time, number_skeleton, 2, 3)
+                elif 'cube' in opt.abstraction_dir:
+                    abstraction_dict_path = pjoin(opt.abstraction_dir, name + '.npy')
+                    # abstraction_all = np.load(abstraction_dict_path, allow_pickle=True)
+                    # abstraction_dict = np.load(pjoin(opt.abstraction_dir, name + '.npy'), allow_pickle=True).item()
+                    max_abs_num = 23
+                if (len(motion)) < min_motion_len or (len(motion) >= 200):
                     continue
-                try:
-                    position = np.load(pjoin(opt.position_dir, name + '.npy'), mmap_mode='r')
-                    motion = np.load(pjoin(opt.motion_dir, name + '.npy'), mmap_mode='r')
-                    if 'skeleton' in opt.abstraction_dir:
-                        raise NotImplementedError('skeleton abstraction is not supported yet')
-                        abstraction = np.load(pjoin(opt.abstraction_dir, name + '.npy')) #(number_sample, time, number_skeleton, 2, 3)
-                    elif 'cube' in opt.abstraction_dir:
-                        abstraction_dict_path = pjoin(opt.abstraction_dir, name + '.npy')
-                        # abstraction_all = np.load(abstraction_dict_path, allow_pickle=True)
-                        # abstraction_dict = np.load(pjoin(opt.abstraction_dir, name + '.npy'), allow_pickle=True).item()
-                        max_abs_num = 23
-                    if (len(motion)) < min_motion_len or (len(motion) >= 200):
-                        continue
-                    text_data = []
-                    flag = False
-                    with cs.open(pjoin(opt.text_dir, name + '.txt')) as f:
-                        for line in f.readlines():
-                            text_dict = {}
-                            line_split = line.strip().split('#')
-                            caption = line_split[0]
-                            tokens = line_split[1].split(' ')
-                            f_tag = float(line_split[2])
-                            to_tag = float(line_split[3])
-                            f_tag = 0.0 if np.isnan(f_tag) else f_tag
-                            to_tag = 0.0 if np.isnan(to_tag) else to_tag
+                text_data = []
+                flag = False
+                with cs.open(pjoin(opt.text_dir, name + '.txt')) as f:
+                    for line in f.readlines():
+                        text_dict = {}
+                        line_split = line.strip().split('#')
+                        caption = line_split[0]
+                        tokens = line_split[1].split(' ')
+                        f_tag = float(line_split[2])
+                        to_tag = float(line_split[3])
+                        f_tag = 0.0 if np.isnan(f_tag) else f_tag
+                        to_tag = 0.0 if np.isnan(to_tag) else to_tag
 
-                            text_dict['caption'] = caption
-                            text_dict['tokens'] = tokens
-                            if f_tag == 0.0 and to_tag == 0.0:
-                                flag = True
-                                text_data.append(text_dict)
-                            else:
-                                try:
-                                    n_motion = motion[int(f_tag*20) : int(to_tag*20)]
-                                    if (len(n_motion)) < min_motion_len or (len(n_motion) >= 200):
-                                        continue
+                        text_dict['caption'] = caption
+                        text_dict['tokens'] = tokens
+                        if f_tag == 0.0 and to_tag == 0.0:
+                            flag = True
+                            text_data.append(text_dict)
+                        else:
+                            try:
+                                n_motion = motion[int(f_tag*20) : int(to_tag*20)]
+                                if (len(n_motion)) < min_motion_len or (len(n_motion) >= 200):
+                                    continue
+                                new_name = random.choice('ABCDEFGHIJKLMNOPQRSTUVW') + '_' + name
+                                while new_name in data_dict:
                                     new_name = random.choice('ABCDEFGHIJKLMNOPQRSTUVW') + '_' + name
-                                    while new_name in data_dict:
-                                        new_name = random.choice('ABCDEFGHIJKLMNOPQRSTUVW') + '_' + name
-                                    data_dict[new_name] = {'motion': n_motion,
-                                                           
-                                                           'position': position,
-                                                           'abstraction_all_path': abstraction_dict_path,
-                                                           'f_t_mul20': {"f_tag20": f_tag*20, "to_tag20": to_tag*20},
-                                                           
-                                                           'length': len(n_motion),
-                                                           'text':[text_dict]}
-                                    new_name_list.append(new_name)
-                                    length_list.append(len(n_motion))
-                                except:
-                                    print(line_split)
-                                    print(line_split[2], line_split[3], f_tag, to_tag, name)
+                                data_dict[new_name] = {'motion': n_motion,
+                                                       
+                                                       'position': position,
+                                                       'abstraction_all_path': abstraction_dict_path,
+                                                       'f_t_mul20': {"f_tag20": f_tag*20, "to_tag20": to_tag*20},
+                                                       
+                                                       'length': len(n_motion),
+                                                       'text':[text_dict]}
+                                new_name_list.append(new_name)
+                                length_list.append(len(n_motion))
+                            except:
+                                print(line_split)
+                                print(line_split[2], line_split[3], f_tag, to_tag, name)
 
-                    if flag:
-                        data_dict[name] = {'motion': motion,
-                                           'position': position,
-                                            'abstraction_all_path': abstraction_dict_path,
-                                           'length': len(motion),
-                                           'text': text_data}
-                        new_name_list.append(name)
-                        length_list.append(len(motion))
-                except:
-                    print('data issue at:', pjoin(opt.motion_dir, name + '.npy'))
-                    # break
+                if flag:
+                    data_dict[name] = {'motion': motion,
+                                       'position': position,
+                                        'abstraction_all_path': abstraction_dict_path,
+                                       'length': len(motion),
+                                       'text': text_data}
+                    new_name_list.append(name)
+                    length_list.append(len(motion))
+            except:
+                print('data issue at:', pjoin(opt.motion_dir, name + '.npy'))
+                # break
                 
         name_list, length_list = zip(*sorted(zip(new_name_list, length_list), key=lambda x: x[1]))
         self.max_abs_num = max_abs_num
@@ -572,7 +468,7 @@ class TextOnlyDataset(data.Dataset):
 
 # A wrapper class for t2m original dataset for MDM purposes
 class HumanML3D(data.Dataset):
-    def __init__(self, mode, datapath='./dataset/humanml_opt.txt', split="train", control_joint=0, density=100, use_multiprocessing=True, num_workers=64, **kwargs):
+    def __init__(self, mode, datapath='./dataset/humanml_opt.txt', split="train", control_joint=0, density=100, **kwargs):
         self.mode = mode
         
         self.dataset_name = 't2m'
@@ -617,7 +513,7 @@ class HumanML3D(data.Dataset):
             self.t2m_dataset = TextOnlyDataset(self.opt, self.mean, self.std, self.split_file)
         else:
             self.w_vectorizer = WordVectorizer(pjoin(abs_base_path, 'glove'), 'our_vab')
-            self.t2m_dataset = Text2MotionDatasetV2(self.opt, self.mean, self.std, self.split_file, self.w_vectorizer, mode, control_joint, density, use_multiprocessing, num_workers)
+            self.t2m_dataset = Text2MotionDatasetV2(self.opt, self.mean, self.std, self.split_file, self.w_vectorizer, mode, control_joint, density)
             self.num_actions = 1 # dummy placeholder
 
         assert len(self.t2m_dataset) > 1, 'You loaded an empty dataset, ' \
