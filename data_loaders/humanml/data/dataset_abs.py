@@ -558,7 +558,7 @@ class TextOnlyDataset(data.Dataset):
 
 # A wrapper class for t2m original dataset for MDM purposes
 class HumanML3D(data.Dataset):
-    def __init__(self, mode, datapath='./dataset/humanml_opt.txt', split="train", control_joint=0, density=100, use_multiprocessing=True, num_workers=64, **kwargs):
+    def __init__(self, mode, datapath='./dataset/humanml_opt.txt', split="train", control_joint=0, density=100, num_workers=64, **kwargs):
         self.mode = mode
         
         self.dataset_name = 't2m'
@@ -603,7 +603,7 @@ class HumanML3D(data.Dataset):
             self.t2m_dataset = TextOnlyDataset(self.opt, self.mean, self.std, self.split_file)
         else:
             self.w_vectorizer = WordVectorizer(pjoin(abs_base_path, 'glove'), 'our_vab')
-            self.t2m_dataset = Text2MotionDatasetV2(self.opt, self.mean, self.std, self.split_file, self.w_vectorizer, mode, control_joint, density, use_multiprocessing, num_workers)
+            self.t2m_dataset = Text2MotionDatasetV2(self.opt, self.mean, self.std, self.split_file, self.w_vectorizer, mode, control_joint, density, num_workers)
             self.num_actions = 1 # dummy placeholder
 
         assert len(self.t2m_dataset) > 1, 'You loaded an empty dataset, ' \
