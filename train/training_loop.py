@@ -204,8 +204,8 @@ class TrainLoop:
             log_loss_dict(
                 self.diffusion, t, {k: v * weights for k, v in losses.items()}
             )
-            with torch.autograd.detect_anomaly():
-                self.mp_trainer.backward(loss)
+            
+            self.mp_trainer.backward(loss)
 
     def _anneal_lr(self):
         if not self.lr_anneal_steps:
