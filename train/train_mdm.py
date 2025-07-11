@@ -34,7 +34,7 @@ def main():
     dist_util.setup_dist(args.device)
 
     print("creating data loader...")
-    data = get_dataset_loader(name=args.dataset, batch_size=args.batch_size, num_frames=args.num_frames, num_workers=os.cpu_count())
+    data = get_dataset_loader(name=args.dataset, batch_size=args.batch_size, num_frames=args.num_frames, num_workers=32)
     # test_data = get_dataset_loader(name=args.dataset, batch_size=args.batch_size, num_frames=args.num_frames, split='train_val')
     print("creating model and diffusion...")
     model, diffusion = create_model_and_diffusion(args, data)
