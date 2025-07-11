@@ -61,7 +61,7 @@ class Text2MotionDatasetV2(data.Dataset):
         new_name_list = []
         length_list = []
         max_abs_num = 0
-        for name in tqdm(id_list):
+        for name in tqdm(id_list[:400]):
             abspath = pjoin(opt.abstraction_dir, name + '.npy')
             if not os.path.exists(abspath):
                 continue
