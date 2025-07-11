@@ -99,9 +99,9 @@ class Text2MotionDatasetV2(data.Dataset):
         self.mean = mean
         self.std = std
         if 'HumanML3D' in opt.data_root:
-            spatial_norm_path = './dataset/humanml_spatial_norm'
+            spatial_norm_path = '/workspace/writeable/dataset/humanml_spatial_norm'
         elif 'KIT' in opt.data_root:
-            spatial_norm_path = './dataset/kit_spatial_norm'
+            spatial_norm_path = '/workspace/writeable/dataset/kit_spatial_norm'
         else:
             raise NotImplementedError('unknown dataset')
         self.raw_mean = np.load(pjoin(spatial_norm_path, 'Mean_raw.npy'))
@@ -398,7 +398,7 @@ class HumanML3D(data.Dataset):
         opt.checkpoints_dir = pjoin(abs_base_path, opt.checkpoints_dir)
         opt.data_root = pjoin(abs_base_path, opt.data_root)
         opt.save_root = pjoin(abs_base_path, opt.save_root)
-        opt.meta_dir = './dataset'
+        opt.meta_dir = '/workspace/writeable/dataset'
         self.opt = opt
         print('Loading dataset %s ...' % opt.dataset_name)
 
