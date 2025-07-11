@@ -387,7 +387,7 @@ class HumanML3D(data.Dataset):
         self.dataname = 't2m'
 
         # Configurations of T2M dataset and KIT dataset is almost the same
-        abs_base_path = f'.'
+        abs_base_path = f'/workspace/writeable'
         dataset_opt_path = pjoin(abs_base_path, datapath)
         device = None  # torch.device('cuda:4') # This param is not in use in this context
         opt = get_opt(dataset_opt_path, device)
