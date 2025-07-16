@@ -38,7 +38,7 @@ def process_single_file(file, data_source, vec_dir, save_dir, use_threading=Fals
         abstraction_dict = np.load(abstraction_dict_path, allow_pickle=True).item()
         vecs = np.load(vec_path)
         vecs = vecs * std + mean
-        position = recover_from_ric(torch.from_numpy(vecs), t2m_kinematic_chain).numpy()
+        position = recover_from_ric(torch.from_numpy(vecs), 22).numpy()
         res = [[], [], [], [], []]
         
         for center_mode in [1,2,3,4,5]:
