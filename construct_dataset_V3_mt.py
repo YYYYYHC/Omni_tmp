@@ -84,8 +84,8 @@ if __name__ == "__main__":
                         help='每个进程内的线程数，默认为4')
     args = parser.parse_args()
 
-    mean_path = os.path.dirname(args.vec_dir) + "/Mean.npy"
-    std_path = os.path.dirname(args.vec_dir) + "/Std.npy"
+    mean_path = os.path.join(os.path.dirname(os.path.dirname(args.vec_dir)), "Mean.npy")
+    std_path = os.path.join(os.path.dirname(os.path.dirname(args.vec_dir)), "Std.npy")
     mean = np.load(mean_path)
     std = np.load(std_path)
     assert os.path.exists(mean_path) and os.path.exists(std_path), f"Mean and Std file not found in {os.path.dirname(args.vec_dir)}"
