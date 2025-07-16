@@ -60,7 +60,7 @@ def get_opt(opt_path, device):
         opt.position_dir = pjoin(opt.data_root, 'new_joints')
         opt.text_dir = pjoin(opt.data_root, 'texts')
         #yhc: abstraction dir
-        opt.abstraction_dir = pjoin(opt.data_root, './abstractions/cubeV3_processed')
+        opt.abstraction_dir = pjoin(opt.data_root, './abstractions/cubeV3.1_processed')
         opt.joints_num = 22
         opt.dim_pose = 263
         opt.max_motion_length = 196
